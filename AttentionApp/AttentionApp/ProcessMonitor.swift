@@ -7,11 +7,6 @@ class ProcessMonitor {
     private let onCommandDetected: (String, pid_t) -> Void
     private let onCommandFinished: (pid_t) -> Void
 
-    // AI tool monitoring (window focus based)
-    private var aiToolTimer: Timer?
-    private var isClaudeWindowFocused = false
-    private let claudeWindowPID: pid_t = -1  // Placeholder PID for Claude window detection
-
     // Subcommands that trigger the video (for package managers)
     private let triggerSubcommands: Set<String> = [
         "install", "i", "add",
@@ -110,20 +105,12 @@ class ProcessMonitor {
         timer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
             self?.checkProcesses()
         }
-
-        // Poll every 1 second for AI tools (CPU-based detection)
-        aiToolTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
-            self?.checkAITools()
-        }
     }
 
     func stopMonitoring() {
         timer?.invalidate()
         timer = nil
-        aiToolTimer?.invalidate()
-        aiToolTimer = nil
         trackedProcesses.removeAll()
-        isClaudeWindowFocused = false
     }
 
     private func checkProcesses() {
@@ -148,82 +135,6 @@ class ProcessMonitor {
         }
 
         knownProcesses = currentPIDs
-    }
-
-    // MARK: - AI Tool Monitoring (CPU-based)
-
-    private func checkAITools() {
-        let isFocused = isClaudeCodeWindowFocused()
-
-        if isFocused && !isClaudeWindowFocused {
-            // Claude window just became focused
-            isClaudeWindowFocused = true
-            trackedProcesses.insert(claudeWindowPID)
-            onCommandDetected("Claude Code", claudeWindowPID)
-        } else if !isFocused && isClaudeWindowFocused {
-            // Claude window lost focus
-            isClaudeWindowFocused = false
-            trackedProcesses.remove(claudeWindowPID)
-            onCommandFinished(claudeWindowPID)
-        }
-    }
-
-    private func isClaudeCodeWindowFocused() -> Bool {
-        // Check if terminal is focused AND claude process is running
-        return isTerminalFocused() && isClaudeProcessRunning()
-    }
-
-    private func isTerminalFocused() -> Bool {
-        let script = """
-            tell application "System Events"
-                set frontApp to first application process whose frontmost is true
-                set appName to name of frontApp
-                if appName is in {"Terminal", "iTerm2", "iTerm", "Alacritty", "kitty", "Hyper", "WezTerm", "Warp", "ghostty"} then
-                    return "true"
-                end if
-                return "false"
-            end tell
-            """
-
-        let task = Process()
-        task.launchPath = "/usr/bin/osascript"
-        task.arguments = ["-e", script]
-
-        let pipe = Pipe()
-        task.standardOutput = pipe
-        task.standardError = FileHandle.nullDevice
-
-        do {
-            try task.run()
-            task.waitUntilExit()
-
-            let data = pipe.fileHandleForReading.readDataToEndOfFile()
-            if let output = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) {
-                return output == "true"
-            }
-        } catch {
-            // Ignore errors
-        }
-
-        return false
-    }
-
-    private func isClaudeProcessRunning() -> Bool {
-        let task = Process()
-        task.launchPath = "/usr/bin/pgrep"
-        task.arguments = ["-x", "claude"]
-
-        let pipe = Pipe()
-        task.standardOutput = pipe
-        task.standardError = FileHandle.nullDevice
-
-        do {
-            try task.run()
-            task.waitUntilExit()
-            return task.terminationStatus == 0
-        } catch {
-            return false
-        }
     }
 
     private func getCurrentProcessPIDs() -> Set<pid_t> {

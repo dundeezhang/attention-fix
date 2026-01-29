@@ -34,32 +34,34 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         let menu = NSMenu()
 
-        let enableItem = NSMenuItem(title: "Enabled", action: #selector(toggleEnabled), keyEquivalent: "e")
+        let enableItem = NSMenuItem(title: "Enabled", action: #selector(toggleEnabled), keyEquivalent: "")
         enableItem.state = isEnabled ? .on : .off
         menu.addItem(enableItem)
 
-        let bounceItem = NSMenuItem(title: "DVD Bounce Mode", action: #selector(toggleBounceMode), keyEquivalent: "b")
+        let bounceItem = NSMenuItem(title: "DVD Bounce Mode", action: #selector(toggleBounceMode), keyEquivalent: "")
         bounceItem.state = isBounceMode ? .on : .off
         menu.addItem(bounceItem)
 
-        let loopItem = NSMenuItem(title: "Loop Current Video", action: #selector(toggleLoopMode), keyEquivalent: "l")
+        let loopItem = NSMenuItem(title: "Loop Current Video", action: #selector(toggleLoopMode), keyEquivalent: "")
         loopItem.state = isLoopMode ? .on : .off
         menu.addItem(loopItem)
 
         menu.addItem(NSMenuItem.separator())
 
-        let testItem = NSMenuItem(title: "Test Video", action: #selector(toggleTestVideo), keyEquivalent: "t")
+        let testItem = NSMenuItem(title: "Test Video", action: #selector(toggleTestVideo), keyEquivalent: "")
         testItem.state = isTestMode ? .on : .off
         menu.addItem(testItem)
 
         menu.addItem(NSMenuItem.separator())
 
-        menu.addItem(NSMenuItem(title: "Previous Video", action: #selector(previousVideo), keyEquivalent: "["))
-        menu.addItem(NSMenuItem(title: "Next Video", action: #selector(nextVideo), keyEquivalent: "]"))
+        // Media controls on one line with icons
+        let mediaItem = NSMenuItem()
+        mediaItem.view = createMediaControls()
+        menu.addItem(mediaItem)
 
         menu.addItem(NSMenuItem.separator())
 
-        menu.addItem(NSMenuItem(title: "Quit", action: #selector(quit), keyEquivalent: "q"))
+        menu.addItem(NSMenuItem(title: "Quit", action: #selector(quit), keyEquivalent: ""))
 
         statusItem.menu = menu
     }
@@ -156,16 +158,58 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private func showVideoPlayer() {
         if videoWindow == nil {
             videoWindow = VideoPlayerWindow()
+            videoWindow?.setBounceMode(isBounceMode)
+            videoWindow?.setLoopMode(isLoopMode)
+            videoWindow?.showAndPlay()
+        } else if !videoWindow!.isVisible {
+            // Window exists but hidden - resume or start fresh
+            videoWindow?.setBounceMode(isBounceMode)
+            videoWindow?.setLoopMode(isLoopMode)
+            videoWindow?.showAndPlay()
+        } else {
+            // Already visible - just ensure settings are current and make sure it's shown
+            videoWindow?.setBounceMode(isBounceMode)
+            videoWindow?.setLoopMode(isLoopMode)
+            videoWindow?.orderFrontRegardless()
         }
-
-        // Always apply current settings
-        videoWindow?.setBounceMode(isBounceMode)
-        videoWindow?.setLoopMode(isLoopMode)
-        videoWindow?.showAndPlay()
     }
 
     private func hideVideoPlayer() {
         videoWindow?.stopPlayback()
         videoWindow?.orderOut(nil)
+    }
+
+    private func createMediaControls() -> NSView {
+        let container = NSView(frame: NSRect(x: 0, y: 0, width: 220, height: 32))
+
+        let buttonSize: CGFloat = 32
+        let spacing: CGFloat = 8
+        let totalWidth = buttonSize * 2 + spacing
+        let startX = (220 - totalWidth) / 2
+
+        // Previous button
+        let prevButton = NSButton(frame: NSRect(x: startX, y: 0, width: buttonSize, height: buttonSize))
+        prevButton.bezelStyle = .inline
+        prevButton.isBordered = false
+        prevButton.image = NSImage(systemSymbolName: "backward.fill", accessibilityDescription: "Previous")
+        prevButton.imageScaling = .scaleProportionallyUpOrDown
+        prevButton.target = self
+        prevButton.action = #selector(previousVideo)
+        prevButton.contentTintColor = .labelColor
+
+        // Next button
+        let nextButton = NSButton(frame: NSRect(x: startX + buttonSize + spacing, y: 0, width: buttonSize, height: buttonSize))
+        nextButton.bezelStyle = .inline
+        nextButton.isBordered = false
+        nextButton.image = NSImage(systemSymbolName: "forward.fill", accessibilityDescription: "Next")
+        nextButton.imageScaling = .scaleProportionallyUpOrDown
+        nextButton.target = self
+        nextButton.action = #selector(nextVideo)
+        nextButton.contentTintColor = .labelColor
+
+        container.addSubview(prevButton)
+        container.addSubview(nextButton)
+
+        return container
     }
 }
