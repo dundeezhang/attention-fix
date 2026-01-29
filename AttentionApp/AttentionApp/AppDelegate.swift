@@ -1,6 +1,4 @@
 import AppKit
-import SwiftUI
-import AVKit
 
 class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem!

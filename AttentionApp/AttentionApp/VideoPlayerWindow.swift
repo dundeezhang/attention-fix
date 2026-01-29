@@ -1,6 +1,5 @@
 import AppKit
 import AVKit
-import SwiftUI
 import MediaPlayer
 
 class VideoPlayerWindow: NSPanel {

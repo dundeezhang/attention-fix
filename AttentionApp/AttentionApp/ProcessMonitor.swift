@@ -28,7 +28,7 @@ class ProcessMonitor {
     // Subcommands that should NOT trigger the video
     private let excludeSubcommands: Set<String> = [
         "start", "dev", "serve", "watch",
-        "run", "preview", "storybook",
+        "preview", "storybook",
         "list", "show", "info", "search",
         "config", "help", "version", "--version", "-v", "-h", "--help"
     ]
