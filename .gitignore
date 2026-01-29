@@ -1,0 +1,25 @@
+# Build output
+build/
+
+# Xcode
+*.xcuserstate
+xcuserdata/
+DerivedData/
+*.xccheckout
+*.moved-aside
+*.hmap
+*.ipa
+*.dSYM.zip
+*.dSYM
+
+# Video files in Resources (add your own)
+AttentionApp/AttentionApp/Resources/*.mp4
+AttentionApp/AttentionApp/Resources/*.mov
+AttentionApp/AttentionApp/Resources/*.m4v
+AttentionApp/AttentionApp/Resources/*.avi
+AttentionApp/AttentionApp/Resources/*.mkv
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
