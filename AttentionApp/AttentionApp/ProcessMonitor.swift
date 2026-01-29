@@ -7,6 +7,20 @@ class ProcessMonitor {
     private let onCommandDetected: (String, pid_t) -> Void
     private let onCommandFinished: (pid_t) -> Void
 
+    // AI tool monitoring (CPU-based)
+    private var aiToolTimer: Timer?
+    private var activeAITools: Set<pid_t> = []
+    private let aiToolCPUThreshold: Double = 5.0  // CPU % threshold to consider "thinking"
+
+    // AI tools to monitor for "thinking" state
+    private let aiToolPatterns: [String] = [
+        "claude",           // Claude Code CLI
+        "cursor",           // Cursor IDE
+        "copilot",          // GitHub Copilot
+        "codeium",          // Codeium
+        "tabnine"           // Tabnine
+    ]
+
     // Subcommands that trigger the video (for package managers)
     private let triggerSubcommands: Set<String> = [
         "install", "i", "add",
@@ -101,16 +115,24 @@ class ProcessMonitor {
         // Initial scan
         knownProcesses = getCurrentProcessPIDs()
 
-        // Poll every 0.5 seconds
+        // Poll every 0.5 seconds for build commands
         timer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
             self?.checkProcesses()
+        }
+
+        // Poll every 1 second for AI tools (CPU-based detection)
+        aiToolTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
+            self?.checkAITools()
         }
     }
 
     func stopMonitoring() {
         timer?.invalidate()
         timer = nil
+        aiToolTimer?.invalidate()
+        aiToolTimer = nil
         trackedProcesses.removeAll()
+        activeAITools.removeAll()
     }
 
     private func checkProcesses() {
@@ -135,6 +157,87 @@ class ProcessMonitor {
         }
 
         knownProcesses = currentPIDs
+    }
+
+    // MARK: - AI Tool Monitoring (CPU-based)
+
+    private func checkAITools() {
+        let aiProcesses = getAIToolProcesses()
+
+        for (pid, commandLine, cpuUsage) in aiProcesses {
+            let isThinking = cpuUsage >= aiToolCPUThreshold
+
+            if isThinking && !activeAITools.contains(pid) {
+                // AI tool started thinking
+                activeAITools.insert(pid)
+                trackedProcesses.insert(pid)
+                onCommandDetected("AI: \(commandLine)", pid)
+            } else if !isThinking && activeAITools.contains(pid) {
+                // AI tool stopped thinking (waiting for input)
+                activeAITools.remove(pid)
+                trackedProcesses.remove(pid)
+                onCommandFinished(pid)
+            }
+        }
+
+        // Check for AI tools that are no longer running
+        let currentAIPids = Set(aiProcesses.map { $0.0 })
+        let finishedAITools = activeAITools.subtracting(currentAIPids)
+        for pid in finishedAITools {
+            activeAITools.remove(pid)
+            trackedProcesses.remove(pid)
+            onCommandFinished(pid)
+        }
+    }
+
+    private func getAIToolProcesses() -> [(pid_t, String, Double)] {
+        var results: [(pid_t, String, Double)] = []
+
+        let task = Process()
+        task.launchPath = "/bin/ps"
+        task.arguments = ["-axo", "pid=,pcpu=,command="]
+
+        let pipe = Pipe()
+        task.standardOutput = pipe
+        task.standardError = FileHandle.nullDevice
+
+        do {
+            try task.run()
+            task.waitUntilExit()
+
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            if let output = String(data: data, encoding: .utf8) {
+                let lines = output.split(separator: "\n")
+                for line in lines {
+                    let trimmed = line.trimmingCharacters(in: .whitespaces)
+                    let parts = trimmed.split(separator: " ", maxSplits: 2, omittingEmptySubsequences: true)
+
+                    guard parts.count >= 3,
+                          let pid = pid_t(parts[0]),
+                          let cpu = Double(parts[1]) else { continue }
+
+                    let commandLine = String(parts[2])
+                    let lowercased = commandLine.lowercased()
+
+                    // Check if this is an AI tool we care about
+                    for pattern in aiToolPatterns {
+                        if lowercased.contains(pattern) {
+                            // Exclude ourselves and irrelevant processes
+                            if !lowercased.contains("attentionapp") &&
+                               !lowercased.contains("grep") &&
+                               !lowercased.contains("ps -") {
+                                results.append((pid, commandLine, cpu))
+                                break
+                            }
+                        }
+                    }
+                }
+            }
+        } catch {
+            // Ignore errors
+        }
+
+        return results
     }
 
     private func getCurrentProcessPIDs() -> Set<pid_t> {
