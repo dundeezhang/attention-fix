@@ -12,6 +12,9 @@ class VideoPlayerWindow: NSPanel {
     // Video playlist
     private var availableVideos: [URL] = []
     private var currentVideoURL: URL?
+    private var videoHistory: [URL] = []
+    private var historyIndex: Int = -1
+    private var isLoopMode = false
 
     // DVD bounce mode
     private var isBounceMode = false
@@ -76,17 +79,30 @@ class VideoPlayerWindow: NSPanel {
         // Load all available videos
         availableVideos = getAllVideoURLs()
 
+        // Reset history when starting fresh
+        videoHistory.removeAll()
+        historyIndex = -1
+
         guard let url = getNextVideoURL() else {
             print("Warning: No video file found. Create test.mp4 in ~/Movies/ or the app bundle.")
             showPlaceholder()
             return
         }
 
-        playVideo(url: url)
+        playVideo(url: url, addToHistory: true)
     }
 
-    private func playVideo(url: URL) {
+    private func playVideo(url: URL, addToHistory: Bool = true) {
         currentVideoURL = url
+
+        if addToHistory {
+            // Remove any forward history when playing a new video
+            if historyIndex < videoHistory.count - 1 {
+                videoHistory.removeLast(videoHistory.count - historyIndex - 1)
+            }
+            videoHistory.append(url)
+            historyIndex = videoHistory.count - 1
+        }
 
         // Load asset to get video size
         let asset = AVURLAsset(url: url)
@@ -106,6 +122,35 @@ class VideoPlayerWindow: NSPanel {
         // Pick a random video excluding the current one
         let candidates = availableVideos.filter { $0 != currentVideoURL }
         return candidates.randomElement() ?? availableVideos.randomElement()
+    }
+
+    // MARK: - Skip Controls
+
+    func skipToNext() {
+        guard !availableVideos.isEmpty else { return }
+
+        // Remove observer for current video
+        if let observer = loopObserver {
+            NotificationCenter.default.removeObserver(observer)
+            loopObserver = nil
+        }
+
+        guard let nextURL = getNextVideoURL() else { return }
+        playVideo(url: nextURL, addToHistory: true)
+    }
+
+    func skipToPrevious() {
+        guard !videoHistory.isEmpty, historyIndex > 0 else { return }
+
+        // Remove observer for current video
+        if let observer = loopObserver {
+            NotificationCenter.default.removeObserver(observer)
+            loopObserver = nil
+        }
+
+        historyIndex -= 1
+        let previousURL = videoHistory[historyIndex]
+        playVideo(url: previousURL, addToHistory: false)
     }
 
     private func loadAndPlay(asset: AVAsset, url: URL) async {
@@ -217,6 +262,13 @@ class VideoPlayerWindow: NSPanel {
     }
 
     private func playNextVideo() {
+        // If loop mode is enabled, just restart the current video
+        if isLoopMode {
+            player?.seek(to: .zero)
+            player?.play()
+            return
+        }
+
         // Remove observer for current video
         if let observer = loopObserver {
             NotificationCenter.default.removeObserver(observer)
@@ -231,7 +283,11 @@ class VideoPlayerWindow: NSPanel {
             return
         }
 
-        playVideo(url: nextURL)
+        playVideo(url: nextURL, addToHistory: true)
+    }
+
+    func setLoopMode(_ enabled: Bool) {
+        isLoopMode = enabled
     }
 
     private func getAllVideoURLs() -> [URL] {

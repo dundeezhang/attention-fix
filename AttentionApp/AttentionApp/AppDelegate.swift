@@ -8,14 +8,17 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var videoWindow: VideoPlayerWindow?
     private var isEnabled = true
     private var isBounceMode = false
+    private var isLoopMode = false
     private var isTestMode = false
     private var activeProcesses: Set<pid_t> = []
 
     private let bounceModeKey = "AttentionApp.BounceMode"
+    private let loopModeKey = "AttentionApp.LoopMode"
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Load saved preferences
         isBounceMode = UserDefaults.standard.bool(forKey: bounceModeKey)
+        isLoopMode = UserDefaults.standard.bool(forKey: loopModeKey)
 
         setupStatusBar()
         setupProcessMonitor()
@@ -39,11 +42,20 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         bounceItem.state = isBounceMode ? .on : .off
         menu.addItem(bounceItem)
 
+        let loopItem = NSMenuItem(title: "Loop Current Video", action: #selector(toggleLoopMode), keyEquivalent: "l")
+        loopItem.state = isLoopMode ? .on : .off
+        menu.addItem(loopItem)
+
         menu.addItem(NSMenuItem.separator())
 
         let testItem = NSMenuItem(title: "Test Video", action: #selector(toggleTestVideo), keyEquivalent: "t")
         testItem.state = isTestMode ? .on : .off
         menu.addItem(testItem)
+
+        menu.addItem(NSMenuItem.separator())
+
+        menu.addItem(NSMenuItem(title: "Previous Video", action: #selector(previousVideo), keyEquivalent: "["))
+        menu.addItem(NSMenuItem(title: "Next Video", action: #selector(nextVideo), keyEquivalent: "]"))
 
         menu.addItem(NSMenuItem.separator())
 
@@ -90,6 +102,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         UserDefaults.standard.set(isBounceMode, forKey: bounceModeKey)
     }
 
+    @objc private func toggleLoopMode(_ sender: NSMenuItem) {
+        isLoopMode.toggle()
+        sender.state = isLoopMode ? .on : .off
+        videoWindow?.setLoopMode(isLoopMode)
+
+        // Save preference
+        UserDefaults.standard.set(isLoopMode, forKey: loopModeKey)
+    }
+
     @objc private func toggleTestVideo(_ sender: NSMenuItem) {
         isTestMode.toggle()
         sender.state = isTestMode ? .on : .off
@@ -102,6 +123,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 hideVideoPlayer()
             }
         }
+    }
+
+    @objc private func previousVideo() {
+        videoWindow?.skipToPrevious()
+    }
+
+    @objc private func nextVideo() {
+        videoWindow?.skipToNext()
     }
 
     @objc private func quit() {
@@ -127,9 +156,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private func showVideoPlayer() {
         if videoWindow == nil {
             videoWindow = VideoPlayerWindow()
-            videoWindow?.setBounceMode(isBounceMode)
         }
 
+        // Always apply current settings
+        videoWindow?.setBounceMode(isBounceMode)
+        videoWindow?.setLoopMode(isLoopMode)
         videoWindow?.showAndPlay()
     }
 
