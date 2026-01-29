@@ -7,19 +7,10 @@ class ProcessMonitor {
     private let onCommandDetected: (String, pid_t) -> Void
     private let onCommandFinished: (pid_t) -> Void
 
-    // AI tool monitoring (CPU-based)
+    // AI tool monitoring (window focus based)
     private var aiToolTimer: Timer?
-    private var activeAITools: Set<pid_t> = []
-    private let aiToolCPUThreshold: Double = 5.0  // CPU % threshold to consider "thinking"
-
-    // AI tools to monitor for "thinking" state
-    private let aiToolPatterns: [String] = [
-        "claude",           // Claude Code CLI
-        "cursor",           // Cursor IDE
-        "copilot",          // GitHub Copilot
-        "codeium",          // Codeium
-        "tabnine"           // Tabnine
-    ]
+    private var isClaudeWindowFocused = false
+    private let claudeWindowPID: pid_t = -1  // Placeholder PID for Claude window detection
 
     // Subcommands that trigger the video (for package managers)
     private let triggerSubcommands: Set<String> = [
@@ -132,7 +123,7 @@ class ProcessMonitor {
         aiToolTimer?.invalidate()
         aiToolTimer = nil
         trackedProcesses.removeAll()
-        activeAITools.removeAll()
+        isClaudeWindowFocused = false
     }
 
     private func checkProcesses() {
@@ -162,40 +153,41 @@ class ProcessMonitor {
     // MARK: - AI Tool Monitoring (CPU-based)
 
     private func checkAITools() {
-        let aiProcesses = getAIToolProcesses()
+        let isFocused = isClaudeCodeWindowFocused()
 
-        for (pid, commandLine, cpuUsage) in aiProcesses {
-            let isThinking = cpuUsage >= aiToolCPUThreshold
-
-            if isThinking && !activeAITools.contains(pid) {
-                // AI tool started thinking
-                activeAITools.insert(pid)
-                trackedProcesses.insert(pid)
-                onCommandDetected("AI: \(commandLine)", pid)
-            } else if !isThinking && activeAITools.contains(pid) {
-                // AI tool stopped thinking (waiting for input)
-                activeAITools.remove(pid)
-                trackedProcesses.remove(pid)
-                onCommandFinished(pid)
-            }
-        }
-
-        // Check for AI tools that are no longer running
-        let currentAIPids = Set(aiProcesses.map { $0.0 })
-        let finishedAITools = activeAITools.subtracting(currentAIPids)
-        for pid in finishedAITools {
-            activeAITools.remove(pid)
-            trackedProcesses.remove(pid)
-            onCommandFinished(pid)
+        if isFocused && !isClaudeWindowFocused {
+            // Claude window just became focused
+            isClaudeWindowFocused = true
+            trackedProcesses.insert(claudeWindowPID)
+            onCommandDetected("Claude Code", claudeWindowPID)
+        } else if !isFocused && isClaudeWindowFocused {
+            // Claude window lost focus
+            isClaudeWindowFocused = false
+            trackedProcesses.remove(claudeWindowPID)
+            onCommandFinished(claudeWindowPID)
         }
     }
 
-    private func getAIToolProcesses() -> [(pid_t, String, Double)] {
-        var results: [(pid_t, String, Double)] = []
+    private func isClaudeCodeWindowFocused() -> Bool {
+        // Check if terminal is focused AND claude process is running
+        return isTerminalFocused() && isClaudeProcessRunning()
+    }
+
+    private func isTerminalFocused() -> Bool {
+        let script = """
+            tell application "System Events"
+                set frontApp to first application process whose frontmost is true
+                set appName to name of frontApp
+                if appName is in {"Terminal", "iTerm2", "iTerm", "Alacritty", "kitty", "Hyper", "WezTerm", "Warp", "ghostty"} then
+                    return "true"
+                end if
+                return "false"
+            end tell
+            """
 
         let task = Process()
-        task.launchPath = "/bin/ps"
-        task.arguments = ["-axo", "pid=,pcpu=,command="]
+        task.launchPath = "/usr/bin/osascript"
+        task.arguments = ["-e", script]
 
         let pipe = Pipe()
         task.standardOutput = pipe
@@ -206,38 +198,32 @@ class ProcessMonitor {
             task.waitUntilExit()
 
             let data = pipe.fileHandleForReading.readDataToEndOfFile()
-            if let output = String(data: data, encoding: .utf8) {
-                let lines = output.split(separator: "\n")
-                for line in lines {
-                    let trimmed = line.trimmingCharacters(in: .whitespaces)
-                    let parts = trimmed.split(separator: " ", maxSplits: 2, omittingEmptySubsequences: true)
-
-                    guard parts.count >= 3,
-                          let pid = pid_t(parts[0]),
-                          let cpu = Double(parts[1]) else { continue }
-
-                    let commandLine = String(parts[2])
-                    let lowercased = commandLine.lowercased()
-
-                    // Check if this is an AI tool we care about
-                    for pattern in aiToolPatterns {
-                        if lowercased.contains(pattern) {
-                            // Exclude ourselves and irrelevant processes
-                            if !lowercased.contains("attentionapp") &&
-                               !lowercased.contains("grep") &&
-                               !lowercased.contains("ps -") {
-                                results.append((pid, commandLine, cpu))
-                                break
-                            }
-                        }
-                    }
-                }
+            if let output = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) {
+                return output == "true"
             }
         } catch {
             // Ignore errors
         }
 
-        return results
+        return false
+    }
+
+    private func isClaudeProcessRunning() -> Bool {
+        let task = Process()
+        task.launchPath = "/usr/bin/pgrep"
+        task.arguments = ["-x", "claude"]
+
+        let pipe = Pipe()
+        task.standardOutput = pipe
+        task.standardError = FileHandle.nullDevice
+
+        do {
+            try task.run()
+            task.waitUntilExit()
+            return task.terminationStatus == 0
+        } catch {
+            return false
+        }
     }
 
     private func getCurrentProcessPIDs() -> Set<pid_t> {

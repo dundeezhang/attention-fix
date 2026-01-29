@@ -1,12 +1,29 @@
-# Videos
+# Media Files
 
-Place your video files here. Supported formats:
+Place your media files here.
+
+## Supported Video Formats
 - `.mp4`
 - `.mov`
 - `.m4v`
 - `.avi`
 - `.mkv`
+- `.webm`
 
-The app will randomly select one video each time it triggers.
+## Supported Image Formats
+- `.png`
+- `.jpg` / `.jpeg`
+- `.heic` / `.heif`
+- `.gif`
+- `.webp`
+- `.bmp`
+- `.tiff` / `.tif`
 
-Videos are git-ignored to keep the repository lightweight.
+## Behavior
+- The app randomly selects media each time it triggers
+- Videos play until they end, then switch to another random file
+- Images display for 8 seconds, then switch to another random file
+- Use "Loop Current Video" in the menu to keep the same media playing
+- Use Previous (⌘[) and Next (⌘]) to manually change media
+
+Media files are git-ignored to keep the repository lightweight.
