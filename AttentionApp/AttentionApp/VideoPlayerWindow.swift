@@ -3,7 +3,7 @@ import AVKit
 import SwiftUI
 import MediaPlayer
 
-class VideoPlayerWindow: NSWindow {
+class VideoPlayerWindow: NSPanel {
     private var player: AVPlayer?
     private var playerView: AVPlayerView?
     private var loopObserver: Any?
@@ -21,14 +21,16 @@ class VideoPlayerWindow: NSWindow {
 
         super.init(
             contentRect: windowRect,
-            styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
+            styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView, .nonactivatingPanel, .utilityWindow],
             backing: .buffered,
             defer: false
         )
 
-        // Make window float above everything
+        // Make window float above everything - panels are typically ignored by tiling WMs
         self.level = .floating
-        self.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
+        self.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .transient]
+        self.hidesOnDeactivate = false
+        self.isFloatingPanel = true
         self.isOpaque = false
         self.backgroundColor = .clear
         self.hasShadow = true
@@ -163,7 +165,7 @@ class VideoPlayerWindow: NSWindow {
         }
 
         // Show window and play
-        self.makeKeyAndOrderFront(nil)
+        self.orderFrontRegardless()
         player?.play()
     }
 
@@ -221,7 +223,7 @@ class VideoPlayerWindow: NSWindow {
         label.autoresizingMask = [.width, .height]
 
         self.contentView?.addSubview(label)
-        self.makeKeyAndOrderFront(nil)
+        self.orderFrontRegardless()
     }
 
     func stopPlayback() {

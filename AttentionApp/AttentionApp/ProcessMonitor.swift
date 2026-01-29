@@ -7,8 +7,8 @@ class ProcessMonitor {
     private let onCommandDetected: (String, pid_t) -> Void
     private let onCommandFinished: (pid_t) -> Void
 
-    // Commands that trigger the video
-    private let triggerCommands: Set<String> = [
+    // Subcommands that trigger the video (for package managers)
+    private let triggerSubcommands: Set<String> = [
         "install", "i", "add",
         "update", "upgrade", "up",
         "remove", "uninstall", "rm", "un",
@@ -25,15 +25,71 @@ class ProcessMonitor {
         "exec", "dlx", "npx"
     ]
 
-    // Commands that should NOT trigger the video
-    private let excludeCommands: Set<String> = [
+    // Subcommands that should NOT trigger the video
+    private let excludeSubcommands: Set<String> = [
         "start", "dev", "serve", "watch",
-        "run", "preview", "storybook"
+        "run", "preview", "storybook",
+        "list", "show", "info", "search",
+        "config", "help", "version", "--version", "-v", "-h", "--help"
     ]
 
-    // Package managers to monitor
+    // Package managers that need a subcommand check
     private let packageManagers: Set<String> = [
-        "npm", "pnpm", "yarn", "bun"
+        "npm", "pnpm", "yarn", "bun",
+        "pip", "pip3", "pipx", "uv",
+        "poetry", "pdm", "conda", "mamba",
+        "cargo", "rustup",
+        "go",
+        "gem", "bundle", "bundler",
+        "composer",
+        "mvn", "maven", "gradle", "gradlew",
+        "dotnet", "nuget",
+        "mix",  // Elixir
+        "cabal", "stack",  // Haskell
+        "nimble",  // Nim
+        "pub",  // Dart
+        "swift",
+        "vcpkg", "conan",  // C++ package managers
+        "brew", "brew.rb"  // Homebrew (brew.rb is the actual executable)
+    ]
+
+    // Compilers/build tools that always trigger (no subcommand needed)
+    private let alwaysTriggerCommands: Set<String> = [
+        "gcc", "g++", "clang", "clang++", "cc", "c++",
+        "make", "gmake", "cmake", "ninja", "meson",
+        "rustc", "javac", "kotlinc", "scalac",
+        "tsc",  // TypeScript compiler
+        "swiftc",
+        "ghc",  // Haskell
+        "ocamlc", "ocamlopt",
+        "fpc",  // Pascal
+        "gfortran", "ifort",
+        "nasm", "yasm",  // Assembly
+        "zig",
+        "dmd", "ldc", "gdc"  // D language
+    ]
+
+    // Go subcommands that trigger
+    private let goTriggerSubcommands: Set<String> = [
+        "build", "install", "get", "mod", "test", "generate", "clean"
+    ]
+
+    // Cargo subcommands that trigger
+    private let cargoTriggerSubcommands: Set<String> = [
+        "build", "install", "test", "check", "clippy", "clean", "update", "fetch", "publish"
+    ]
+
+    // Swift subcommands that trigger
+    private let swiftTriggerSubcommands: Set<String> = [
+        "build", "test", "package", "run"
+    ]
+
+    // Homebrew subcommands that trigger
+    private let brewTriggerSubcommands: Set<String> = [
+        "install", "reinstall", "upgrade", "update",
+        "uninstall", "remove", "cleanup", "autoremove",
+        "link", "unlink", "postinstall",
+        "fetch", "bundle"
     ]
 
     init(onCommandDetected: @escaping (String, pid_t) -> Void, onCommandFinished: @escaping (pid_t) -> Void) {
@@ -141,45 +197,76 @@ class ProcessMonitor {
         let lowercased = commandLine.lowercased()
         let components = lowercased.split(separator: " ").map(String.init)
 
-        // Check if it's a package manager command
-        var isPackageManager = false
-        var commandIndex = -1
+        guard !components.isEmpty else { return false }
 
+        // Find the actual command (skip env vars, paths, etc.)
         for (index, component) in components.enumerated() {
             let baseName = (component as NSString).lastPathComponent
-            if packageManagers.contains(baseName) || packageManagers.contains(where: { component.hasSuffix("/\($0)") }) {
-                isPackageManager = true
-                commandIndex = index
-                break
+
+            // Check if it's an always-trigger compiler/build tool
+            if alwaysTriggerCommands.contains(baseName) {
+                return true
+            }
+
+            // Check if it's a package manager
+            if packageManagers.contains(baseName) {
+                return checkPackageManagerSubcommand(baseName: baseName, components: components, commandIndex: index)
             }
         }
 
-        guard isPackageManager, commandIndex < components.count - 1 else {
-            return false
+        // Fallback: check for brew in the command line (runs as ruby with brew.rb)
+        if let brewIndex = components.firstIndex(where: {
+            $0.hasSuffix("/brew") || $0.hasSuffix("/brew.rb") || $0 == "brew" || $0 == "brew.rb"
+        }) {
+            return checkPackageManagerSubcommand(baseName: "brew", components: components, commandIndex: brewIndex)
         }
 
-        // Get the subcommand (e.g., "install", "build", etc.)
+        return false
+    }
+
+    private func checkPackageManagerSubcommand(baseName: String, components: [String], commandIndex: Int) -> Bool {
+        guard commandIndex < components.count - 1 else { return false }
+
         let subcommand = components[commandIndex + 1]
 
         // Check if it's an excluded command first
-        if excludeCommands.contains(subcommand) {
+        if excludeSubcommands.contains(subcommand) {
             return false
+        }
+
+        // Special handling for Go
+        if baseName == "go" {
+            return goTriggerSubcommands.contains(subcommand)
+        }
+
+        // Special handling for Cargo
+        if baseName == "cargo" {
+            return cargoTriggerSubcommands.contains(subcommand)
+        }
+
+        // Special handling for Swift
+        if baseName == "swift" {
+            return swiftTriggerSubcommands.contains(subcommand)
+        }
+
+        // Special handling for Homebrew
+        if baseName == "brew" || baseName == "brew.rb" {
+            return brewTriggerSubcommands.contains(subcommand)
         }
 
         // Check if it's a run command with an excluded script
         if subcommand == "run" && commandIndex + 2 < components.count {
             let scriptName = components[commandIndex + 2]
-            if excludeCommands.contains(scriptName) {
+            if excludeSubcommands.contains(scriptName) {
                 return false
             }
-            // If it's a run command with a trigger script, trigger it
-            if triggerCommands.contains(scriptName) {
+            if triggerSubcommands.contains(scriptName) {
                 return true
             }
         }
 
-        // Check if it's a trigger command
-        if triggerCommands.contains(subcommand) {
+        // Check if it's a trigger subcommand
+        if triggerSubcommands.contains(subcommand) {
             return true
         }
 
