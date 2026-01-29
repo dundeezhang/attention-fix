@@ -7,9 +7,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var processMonitor: ProcessMonitor!
     private var videoWindow: VideoPlayerWindow?
     private var isEnabled = true
+    private var isBounceMode = false
+    private var isTestMode = false
     private var activeProcesses: Set<pid_t> = []
 
+    private let bounceModeKey = "AttentionApp.BounceMode"
+
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Load saved preferences
+        isBounceMode = UserDefaults.standard.bool(forKey: bounceModeKey)
+
         setupStatusBar()
         setupProcessMonitor()
     }
@@ -28,9 +35,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         enableItem.state = isEnabled ? .on : .off
         menu.addItem(enableItem)
 
+        let bounceItem = NSMenuItem(title: "DVD Bounce Mode", action: #selector(toggleBounceMode), keyEquivalent: "b")
+        bounceItem.state = isBounceMode ? .on : .off
+        menu.addItem(bounceItem)
+
         menu.addItem(NSMenuItem.separator())
 
-        menu.addItem(NSMenuItem(title: "Test Video", action: #selector(testVideo), keyEquivalent: "t"))
+        let testItem = NSMenuItem(title: "Test Video", action: #selector(toggleTestVideo), keyEquivalent: "t")
+        testItem.state = isTestMode ? .on : .off
+        menu.addItem(testItem)
 
         menu.addItem(NSMenuItem.separator())
 
@@ -68,13 +81,25 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    @objc private func testVideo() {
-        showVideoPlayer()
+    @objc private func toggleBounceMode(_ sender: NSMenuItem) {
+        isBounceMode.toggle()
+        sender.state = isBounceMode ? .on : .off
+        videoWindow?.setBounceMode(isBounceMode)
 
-        // Auto-hide after 5 seconds for test
-        DispatchQueue.main.asyncAfter(deadline: .now() + 5) { [weak self] in
-            if self?.activeProcesses.isEmpty == true {
-                self?.hideVideoPlayer()
+        // Save preference
+        UserDefaults.standard.set(isBounceMode, forKey: bounceModeKey)
+    }
+
+    @objc private func toggleTestVideo(_ sender: NSMenuItem) {
+        isTestMode.toggle()
+        sender.state = isTestMode ? .on : .off
+
+        if isTestMode {
+            showVideoPlayer()
+        } else {
+            // Only hide if no active processes
+            if activeProcesses.isEmpty {
+                hideVideoPlayer()
             }
         }
     }
@@ -93,8 +118,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private func handleCommandFinished(pid: pid_t) {
         activeProcesses.remove(pid)
 
-        // Only hide if no more active processes
-        if activeProcesses.isEmpty {
+        // Only hide if no more active processes and test mode is off
+        if activeProcesses.isEmpty && !isTestMode {
             hideVideoPlayer()
         }
     }
@@ -102,6 +127,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private func showVideoPlayer() {
         if videoWindow == nil {
             videoWindow = VideoPlayerWindow()
+            videoWindow?.setBounceMode(isBounceMode)
         }
 
         videoWindow?.showAndPlay()

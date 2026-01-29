@@ -9,6 +9,17 @@ class VideoPlayerWindow: NSPanel {
     private var loopObserver: Any?
     private var containerView: NSView?
 
+    // Video playlist
+    private var availableVideos: [URL] = []
+    private var currentVideoURL: URL?
+
+    // DVD bounce mode
+    private var isBounceMode = false
+    private var bounceTimer: Timer?
+    private var velocityX: CGFloat = 4.5
+    private var velocityY: CGFloat = 3.0
+    private let bounceSpeed: CGFloat = 4.5
+
     init() {
         // Start with a default size, will resize when video loads
         let screenRect = NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: 800, height: 600)
@@ -62,20 +73,39 @@ class VideoPlayerWindow: NSPanel {
     }
 
     func showAndPlay() {
-        // Get video file path - look in app bundle first, then in common locations
-        let videoURL = getVideoURL()
+        // Load all available videos
+        availableVideos = getAllVideoURLs()
 
-        guard let url = videoURL else {
+        guard let url = getNextVideoURL() else {
             print("Warning: No video file found. Create test.mp4 in ~/Movies/ or the app bundle.")
             showPlaceholder()
             return
         }
+
+        playVideo(url: url)
+    }
+
+    private func playVideo(url: URL) {
+        currentVideoURL = url
 
         // Load asset to get video size
         let asset = AVURLAsset(url: url)
         Task {
             await loadAndPlay(asset: asset, url: url)
         }
+    }
+
+    private func getNextVideoURL() -> URL? {
+        guard !availableVideos.isEmpty else { return nil }
+
+        // If only one video, return it
+        if availableVideos.count == 1 {
+            return availableVideos.first
+        }
+
+        // Pick a random video excluding the current one
+        let candidates = availableVideos.filter { $0 != currentVideoURL }
+        return candidates.randomElement() ?? availableVideos.randomElement()
     }
 
     private func loadAndPlay(asset: AVAsset, url: URL) async {
@@ -167,28 +197,50 @@ class VideoPlayerWindow: NSPanel {
         let startTime = CMTime(seconds: randomStart, preferredTimescale: 600)
         player?.seek(to: startTime)
 
-        // Loop video
+        // Play next video when current one ends
         loopObserver = NotificationCenter.default.addObserver(
             forName: .AVPlayerItemDidPlayToEndTime,
             object: player?.currentItem,
             queue: .main
         ) { [weak self] _ in
-            self?.player?.seek(to: .zero)
-            self?.player?.play()
+            self?.playNextVideo()
         }
 
         // Show window and play
         self.orderFrontRegardless()
         player?.play()
+
+        // Start bouncing if enabled
+        if isBounceMode {
+            startBouncing()
+        }
     }
 
-    private func getVideoURL() -> URL? {
+    private func playNextVideo() {
+        // Remove observer for current video
+        if let observer = loopObserver {
+            NotificationCenter.default.removeObserver(observer)
+            loopObserver = nil
+        }
+
+        // Get next video
+        guard let nextURL = getNextVideoURL() else {
+            // No other videos, loop current one
+            player?.seek(to: .zero)
+            player?.play()
+            return
+        }
+
+        playVideo(url: nextURL)
+    }
+
+    private func getAllVideoURLs() -> [URL] {
         // Video file extensions to look for
         let videoExtensions = ["mp4", "mov", "m4v", "avi", "mkv"]
 
-        // Check bundle for all video files
         var videoURLs: [URL] = []
 
+        // Check bundle for all video files
         if let resourcePath = Bundle.main.resourcePath {
             let resourceURL = URL(fileURLWithPath: resourcePath)
             if let contents = try? FileManager.default.contentsOfDirectory(at: resourceURL, includingPropertiesForKeys: nil) {
@@ -200,9 +252,9 @@ class VideoPlayerWindow: NSPanel {
             }
         }
 
-        // Return a random video if we found any
+        // If found videos in bundle, return those
         if !videoURLs.isEmpty {
-            return videoURLs.randomElement()
+            return videoURLs
         }
 
         // Fallback: check common locations
@@ -223,7 +275,7 @@ class VideoPlayerWindow: NSPanel {
             }
         }
 
-        return videoURLs.randomElement()
+        return videoURLs
     }
 
     private func showPlaceholder() {
@@ -247,6 +299,66 @@ class VideoPlayerWindow: NSPanel {
             NotificationCenter.default.removeObserver(observer)
             loopObserver = nil
         }
+
+        stopBouncing()
+    }
+
+    // MARK: - DVD Bounce Mode
+
+    func setBounceMode(_ enabled: Bool) {
+        isBounceMode = enabled
+        if enabled && self.isVisible {
+            startBouncing()
+        } else {
+            stopBouncing()
+        }
+    }
+
+    private func startBouncing() {
+        guard bounceTimer == nil else { return }
+
+        // Randomize initial direction
+        velocityX = Bool.random() ? bounceSpeed : -bounceSpeed
+        velocityY = Bool.random() ? (bounceSpeed * 0.7) : -(bounceSpeed * 0.7)
+
+        bounceTimer = Timer.scheduledTimer(withTimeInterval: 1.0/60.0, repeats: true) { [weak self] _ in
+            self?.updateBouncePosition()
+        }
+    }
+
+    private func stopBouncing() {
+        bounceTimer?.invalidate()
+        bounceTimer = nil
+    }
+
+    private func updateBouncePosition() {
+        guard let screen = NSScreen.main?.visibleFrame else { return }
+
+        var frame = self.frame
+
+        // Move window
+        frame.origin.x += velocityX
+        frame.origin.y += velocityY
+
+        // Bounce off left/right edges
+        if frame.origin.x <= screen.origin.x {
+            frame.origin.x = screen.origin.x
+            velocityX = abs(velocityX)
+        } else if frame.origin.x + frame.width >= screen.origin.x + screen.width {
+            frame.origin.x = screen.origin.x + screen.width - frame.width
+            velocityX = -abs(velocityX)
+        }
+
+        // Bounce off top/bottom edges
+        if frame.origin.y <= screen.origin.y {
+            frame.origin.y = screen.origin.y
+            velocityY = abs(velocityY)
+        } else if frame.origin.y + frame.height >= screen.origin.y + screen.height {
+            frame.origin.y = screen.origin.y + screen.height - frame.height
+            velocityY = -abs(velocityY)
+        }
+
+        self.setFrameOrigin(frame.origin)
     }
 
     deinit {
