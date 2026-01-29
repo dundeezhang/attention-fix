@@ -108,11 +108,24 @@ class VideoPlayerWindow: NSPanel {
     private func resizeAndShow(videoWidth: CGFloat, videoHeight: CGFloat, url: URL) {
         let screenRect = NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: 800, height: 600)
 
+        // Minimum window size
+        let minWidth: CGFloat = 320
+        let minHeight: CGFloat = 240
+
         // Scale down video to 60% of native size
         let sizeScale: CGFloat = 0.6
 
         var finalWidth = videoWidth * sizeScale
         var finalHeight = videoHeight * sizeScale
+
+        // Enforce minimum size while maintaining aspect ratio
+        if finalWidth < minWidth || finalHeight < minHeight {
+            let widthRatio = minWidth / finalWidth
+            let heightRatio = minHeight / finalHeight
+            let scale = max(widthRatio, heightRatio)
+            finalWidth *= scale
+            finalHeight *= scale
+        }
 
         // Cap at screen size with margin
         let maxWidth = screenRect.width - 40
