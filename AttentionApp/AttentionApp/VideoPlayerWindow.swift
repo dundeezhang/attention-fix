@@ -1,6 +1,7 @@
 import AppKit
 import AVKit
 import SwiftUI
+import MediaPlayer
 
 class VideoPlayerWindow: NSWindow {
     private var player: AVPlayer?
@@ -140,7 +141,11 @@ class VideoPlayerWindow: NSWindow {
         // Create player
         player = AVPlayer(url: url)
         player?.isMuted = true
+        player?.allowsExternalPlayback = false
         playerView?.player = player
+
+        // Prevent appearing in macOS media controls
+        MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
 
         // Seek to random start position (10-20 seconds)
         let randomStart = Double.random(in: 10...20)
