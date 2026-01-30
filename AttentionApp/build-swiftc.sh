@@ -28,7 +28,7 @@ swiftc \
     -framework AppKit \
     -framework AVKit \
     -framework AVFoundation \
-    -framework SwiftUI \
+    -framework MediaPlayer \
     -O \
     AttentionApp/*.swift
 

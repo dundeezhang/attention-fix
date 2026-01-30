@@ -4,6 +4,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem!
     private var processMonitor: ProcessMonitor!
     private var videoWindow: VideoPlayerWindow?
+    private var settingsWindow: SettingsWindow?
     private var isEnabled = true
     private var isBounceMode = false
     private var isLoopMode = false
@@ -56,6 +57,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let mediaItem = NSMenuItem()
         mediaItem.view = createMediaControls()
         menu.addItem(mediaItem)
+
+        menu.addItem(NSMenuItem.separator())
+
+        menu.addItem(NSMenuItem(title: "Settings...", action: #selector(openSettings), keyEquivalent: ""))
+        menu.addItem(NSMenuItem(title: "Open Media Folder...", action: #selector(openMediaFolder), keyEquivalent: ""))
 
         menu.addItem(NSMenuItem.separator())
 
@@ -118,11 +124,40 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         if isTestMode {
             showVideoPlayer()
         } else {
-            // Only hide if no active processes
+            // Clean up any stale PIDs before checking
+            cleanupStaleProcesses()
             if activeProcesses.isEmpty {
                 hideVideoPlayer()
             }
         }
+    }
+
+    private func cleanupStaleProcesses() {
+        let runningPIDs = getRunningPIDs()
+        activeProcesses = activeProcesses.filter { runningPIDs.contains($0) }
+    }
+
+    private func getRunningPIDs() -> Set<pid_t> {
+        var pids = Set<pid_t>()
+        let task = Process()
+        task.launchPath = "/bin/ps"
+        task.arguments = ["-axo", "pid="]
+        let pipe = Pipe()
+        task.standardOutput = pipe
+        task.standardError = FileHandle.nullDevice
+        do {
+            try task.run()
+            task.waitUntilExit()
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            if let output = String(data: data, encoding: .utf8) {
+                for line in output.split(separator: "\n") {
+                    if let pid = pid_t(line.trimmingCharacters(in: .whitespaces)) {
+                        pids.insert(pid)
+                    }
+                }
+            }
+        } catch {}
+        return pids
     }
 
     @objc private func previousVideo() {
@@ -131,6 +166,31 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func nextVideo() {
         videoWindow?.skipToNext()
+    }
+
+    @objc private func openSettings() {
+        if settingsWindow == nil {
+            settingsWindow = SettingsWindow()
+            settingsWindow?.onSettingsChanged = { [weak self] in
+                // Reload media if settings changed
+                self?.videoWindow?.reloadMedia()
+            }
+        }
+        settingsWindow?.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
+    @objc private func openMediaFolder() {
+        let path: String
+        if let customPath = SettingsWindow.getMediaFolderPath() {
+            path = customPath
+        } else if let resourcePath = Bundle.main.resourcePath {
+            path = resourcePath
+        } else {
+            return
+        }
+        let url = URL(fileURLWithPath: path)
+        NSWorkspace.shared.open(url)
     }
 
     @objc private func quit() {
@@ -178,10 +238,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func createMediaControls() -> NSView {
-        let container = NSView(frame: NSRect(x: 0, y: 0, width: 220, height: 32))
+        let container = NSView(frame: NSRect(x: 0, y: 0, width: 220, height: 24))
 
-        let buttonSize: CGFloat = 32
-        let spacing: CGFloat = 8
+        let buttonSize: CGFloat = 24
+        let spacing: CGFloat = 16
         let totalWidth = buttonSize * 2 + spacing
         let startX = (220 - totalWidth) / 2
 

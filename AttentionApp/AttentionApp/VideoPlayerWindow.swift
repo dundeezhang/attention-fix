@@ -379,10 +379,28 @@ class VideoPlayerWindow: NSPanel {
         isLoopMode = enabled
     }
 
+    func reloadMedia() {
+        availableMedia = getAllMediaURLs()
+    }
+
     private func getAllMediaURLs() -> [URL] {
         let allExtensions = videoExtensions + imageExtensions
-
         var mediaURLs: [URL] = []
+
+        // Check custom media folder first (from settings)
+        if let customPath = UserDefaults.standard.string(forKey: "AttentionApp.MediaFolder") {
+            let customURL = URL(fileURLWithPath: customPath)
+            if let contents = try? FileManager.default.contentsOfDirectory(at: customURL, includingPropertiesForKeys: nil) {
+                for url in contents {
+                    if allExtensions.contains(url.pathExtension.lowercased()) {
+                        mediaURLs.append(url)
+                    }
+                }
+            }
+            if !mediaURLs.isEmpty {
+                return mediaURLs
+            }
+        }
 
         // Check bundle for all media files
         if let resourcePath = Bundle.main.resourcePath {
