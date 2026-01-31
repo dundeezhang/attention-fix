@@ -23,12 +23,12 @@ mkdir -p "$TAP_DIR/Casks"
 cat > "$TAP_DIR/README.md" << 'EOF'
 # Homebrew Tap for AttentionApp
 
-This is a Homebrew tap for [AttentionApp](https://github.com/YOURUSERNAME/attention-fix).
+This is a Homebrew tap for [AttentionApp](https://github.com/dundeezhang/attention-fix).
 
 ## Installation
 
 ```bash
-brew tap YOURUSERNAME/tap https://github.com/YOURUSERNAME/homebrew-tap
+brew tap dundeezhang/tap https://github.com/dundeezhang/homebrew-tap
 brew install --cask attentionapp
 ```
 
@@ -51,10 +51,10 @@ cask "attentionapp" do
   version "1.0.0"
   sha256 "REPLACE_WITH_SHA256"
 
-  url "https://github.com/YOURUSERNAME/attention-fix/releases/download/v#{version}/AttentionApp-v#{version}.zip"
+  url "https://github.com/dundeezhang/attention-fix/releases/download/v#{version}/AttentionApp-v#{version}.zip"
   name "AttentionApp"
   desc "Play videos while waiting for builds"
-  homepage "https://github.com/YOURUSERNAME/attention-fix"
+  homepage "https://github.com/dundeezhang/attention-fix"
 
   depends_on macos: ">= :monterey"
 
@@ -78,7 +78,7 @@ echo "  - $TAP_DIR/README.md"
 echo "  - $TAP_DIR/Casks/attentionapp.rb"
 echo ""
 echo -e "${GREEN}Next steps:${NC}"
-echo "1. Update YOURUSERNAME in the files with your GitHub username"
+echo "1. Update dundeezhang in the files with your GitHub username"
 echo "2. Create a new GitHub repo named 'homebrew-tap'"
 echo "3. Push the contents of $TAP_DIR to that repo:"
 echo ""
@@ -86,7 +86,7 @@ echo "   cd $TAP_DIR"
 echo "   git init"
 echo "   git add ."
 echo "   git commit -m 'Initial tap setup'"
-echo "   git remote add origin https://github.com/YOURUSERNAME/homebrew-tap.git"
+echo "   git remote add origin https://github.com/dundeezhang/homebrew-tap.git"
 echo "   git push -u origin main"
 echo ""
 echo "4. After creating a release, update Casks/attentionapp.rb with:"

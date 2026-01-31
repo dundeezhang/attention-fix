@@ -118,14 +118,14 @@ export default function Home() {
           </p>
           <div className="flex flex-col items-center justify-center gap-4 sm:flex-row">
             <a
-              href="https://github.com/yourusername/AttentionApp/releases/latest"
+              href="https://github.com/dundeezhang/AttentionApp/releases/latest"
               className="flex items-center gap-2 rounded-full bg-white px-8 py-3 font-semibold text-black transition hover:bg-zinc-200"
             >
               <Download className="h-5 w-5" />
               Download .zip
             </a>
             <a
-              href="https://github.com/yourusername/AttentionApp"
+              href="https://github.com/dundeezhang/AttentionApp"
               className="flex items-center gap-2 rounded-full border border-zinc-600 px-8 py-3 font-semibold transition hover:bg-zinc-800"
             >
               View on GitHub

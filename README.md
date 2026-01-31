@@ -5,11 +5,11 @@ A macOS menu bar app that plays videos and images while you wait for builds, ins
 ## Installation
 
 ### Download
-Download the latest release from [Releases](https://github.com/yourusername/attention-fix/releases) and drag to Applications.
+Download the latest release from [Releases](https://github.com/dundeezhang/attention-fix/releases) and drag to Applications.
 
 ### Homebrew
 ```bash
-brew tap yourusername/tap
+brew tap dundeezhang/tap
 brew install --cask attentionapp
 ```
 
