@@ -1,81 +1,69 @@
 # AttentionApp
 
-A macOS status bar app that plays a random video whenever it detects npm/pnpm/yarn/bun commands running (install, build, lint, test, etc.). The video automatically closes when the command finishes.
+A macOS menu bar app that plays videos and images while you wait for builds, installs, and terminal commands to finish.
 
-## Features
+## Installation
 
-- Lives in the menu bar with an eye icon
-- Monitors for package manager commands every 0.5 seconds
-- Plays a random video from the bundled collection
-- Video starts at a random point (10-20 seconds in) for variety
-- Auto-closes when the command completes
-- Native macOS window controls (traffic lights)
-- Stays above all other windows
+### Download
+Download the latest release from [Releases](https://github.com/yourusername/attention-fix/releases) and drag to Applications.
 
-## Triggers
-
-**Commands that show the video:**
-- install, add, i
-- build, compile
-- lint, eslint, prettier
-- test, jest, vitest, mocha
-- update, upgrade
-- clean, clear, cache
-- audit, outdated
-- publish, pack
-- init, create
-- ci, dedupe, prune
-- remove, uninstall
-- link, unlink
-- exec, dlx, npx
-
-**Commands that are ignored:**
-- start, dev, serve, watch, run, preview, storybook
-
-## Requirements
-
-- macOS 12.0 or later
-- Xcode Command Line Tools (`xcode-select --install`)
-
-## Adding Videos
-
-Place your video files (mp4, mov, m4v, avi, mkv) in:
-
-```
-AttentionApp/Resources/
+### Homebrew
+```bash
+brew tap yourusername/tap
+brew install --cask attentionapp
 ```
 
-The app will randomly select one each time it triggers.
-
-## Build
-
+### Build from Source
 ```bash
 ./build-swiftc.sh
-```
-
-The built app will be at `build/AttentionApp.app`
-
-## Run
-
-```bash
-open build/AttentionApp.app
-```
-
-## Install to Applications
-
-```bash
 cp -r build/AttentionApp.app /Applications/
 ```
 
-Then launch from Spotlight or Applications folder.
+Requires macOS 12.0+ and Xcode Command Line Tools (`xcode-select --install`).
+
+## Features
+
+- **Auto-Detection** - Monitors for 50+ build tools and package managers
+- **Media Support** - Videos (mp4, mov, mkv) and images (png, jpg, gif, webp)
+- **DVD Bounce Mode** - Classic bouncing screensaver effect
+- **Screensaver Mode** - Activates after configurable idle time
+- **Multi-Video** - Display 1-4 videos at random positions
+- **Loop Mode** - Keep the current video/image playing
+- **Menu Bar App** - Lives in your menu bar, always accessible
+
+## Supported Tools
+
+**Package Managers:** npm, yarn, pnpm, bun, pip, cargo, brew, go, gem, composer, maven, gradle, dotnet, mix, pub, and more
+
+**Compilers/Build Tools:** gcc, clang, make, cmake, rustc, swiftc, tsc, javac, and more
+
+**Trigger Commands:** install, build, test, lint, update, clean, publish, etc.
+
+**Ignored Commands:** start, dev, serve, watch, run, preview (long-running processes)
+
+## Adding Media
+
+1. Click the menu bar icon
+2. Select "Open Media Folder..." or "Settings..."
+3. Add your videos and images to the folder
+
+Or use Settings to choose any folder on your Mac.
 
 ## Menu Options
 
-Click the eye icon in the menu bar:
-
 - **Enabled** - Toggle monitoring on/off
-- **Test Video** - Manually trigger a video (auto-closes after 5 seconds)
-- **Quit** - Exit the app
+- **DVD Bounce Mode** - Enable bouncing animation
+- **Loop Current Video** - Keep current media playing
+- **Screensaver Mode** - Auto-play after idle timeout
+- **Video Count** - Number of simultaneous videos (1-4)
+- **Test Video** - Preview your media
+- **Settings** - Configure media folder and timeouts
+
+## Settings
+
+- **Media Folder** - Choose where to load videos/images from
+- **Video Count** - How many videos to show at once
+- **Screensaver Timeout** - Seconds of inactivity before screensaver starts
 
 ## Launch at Login
 
@@ -86,17 +74,16 @@ Click the eye icon in the menu bar:
 ## Project Structure
 
 ```
-AttentionApp/
-├── AttentionApp/
-│   ├── AttentionAppApp.swift    # App entry point
-│   ├── AppDelegate.swift        # Status bar and video control
-│   ├── ProcessMonitor.swift     # Detects package manager commands
-│   ├── VideoPlayerWindow.swift  # Floating video player
-│   ├── Info.plist
-│   ├── AttentionApp.entitlements
-│   └── Resources/               # Video files go here
-├── AttentionApp.xcodeproj/      # Xcode project (optional)
-├── build-swiftc.sh              # Build script
-├── build.sh                     # Xcode build script (requires full Xcode)
+attention-fix/
+├── AttentionApp/           # macOS app source
+│   ├── AttentionApp/
+│   │   ├── AppDelegate.swift
+│   │   ├── ProcessMonitor.swift
+│   │   ├── VideoPlayerWindow.swift
+│   │   ├── SettingsWindow.swift
+│   │   └── Resources/
+│   └── build-swiftc.sh
+├── attention-site/         # Landing page (Next.js)
+├── scripts/                # Release scripts
 └── README.md
 ```
