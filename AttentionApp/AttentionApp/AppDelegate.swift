@@ -17,7 +17,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     // Screensaver
     private var idleTimer: Timer?
-    private var eventMonitor: Any?
+    private var globalEventMonitor: Any?
+    private var localEventMonitor: Any?
 
     private let bounceModeKey = "AttentionApp.BounceMode"
     private let loopModeKey = "AttentionApp.LoopMode"
@@ -84,6 +85,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         testItem.state = isTestMode ? .on : .off
         menu.addItem(testItem)
 
+        menu.addItem(NSMenuItem(title: "Stop All Videos", action: #selector(forceStopAllVideos), keyEquivalent: ""))
+
         menu.addItem(NSMenuItem.separator())
 
         // Media controls on one line with icons
@@ -129,9 +132,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             self?.checkIdleTime()
         }
 
-        // Monitor for activity to dismiss screensaver
-        eventMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.mouseMoved, .keyDown, .leftMouseDown, .rightMouseDown, .scrollWheel]) { [weak self] _ in
+        // Monitor for activity to dismiss screensaver (global - other apps)
+        globalEventMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.mouseMoved, .keyDown, .leftMouseDown, .rightMouseDown, .scrollWheel]) { [weak self] _ in
             self?.handleUserActivity()
+        }
+
+        // Monitor for activity to dismiss screensaver (local - this app)
+        localEventMonitor = NSEvent.addLocalMonitorForEvents(matching: [.mouseMoved, .keyDown, .leftMouseDown, .rightMouseDown, .scrollWheel]) { [weak self] event in
+            self?.handleUserActivity()
+            return event
         }
     }
 
@@ -139,9 +148,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         idleTimer?.invalidate()
         idleTimer = nil
 
-        if let monitor = eventMonitor {
+        if let monitor = globalEventMonitor {
             NSEvent.removeMonitor(monitor)
-            eventMonitor = nil
+            globalEventMonitor = nil
+        }
+
+        if let monitor = localEventMonitor {
+            NSEvent.removeMonitor(monitor)
+            localEventMonitor = nil
         }
     }
 
@@ -203,7 +217,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         guard isScreensaverActive else { return }
         isScreensaverActive = false
 
-        // Only hide if no other reason to show
+        // Always hide when deactivating screensaver, unless there's an active build
+        cleanupStaleProcesses()
         if activeProcesses.isEmpty && !isTestMode {
             hideVideoPlayer()
         } else {
@@ -211,6 +226,23 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             videoWindows.forEach {
                 $0.setBounceMode(isBounceMode)
                 $0.setLoopMode(isLoopMode)
+            }
+        }
+    }
+
+    // Force stop all videos (emergency stop)
+    @objc private func forceStopAllVideos() {
+        isScreensaverActive = false
+        isTestMode = false
+        activeProcesses.removeAll()
+        hideVideoPlayer()
+
+        // Update menu item states
+        if let menu = statusItem.menu {
+            for item in menu.items {
+                if item.title == "Test Video" {
+                    item.state = .off
+                }
             }
         }
     }
