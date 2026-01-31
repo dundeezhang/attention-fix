@@ -1,26 +1,43 @@
 import AppKit
+import IOKit
 
 class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem!
     private var processMonitor: ProcessMonitor!
-    private var videoWindow: VideoPlayerWindow?
+    private var videoWindows: [VideoPlayerWindow] = []
     private var settingsWindow: SettingsWindow?
     private var isEnabled = true
     private var isBounceMode = false
     private var isLoopMode = false
     private var isTestMode = false
+    private var isScreensaverMode = false
+    private var isScreensaverActive = false
+    private var videoCount = 1
     private var activeProcesses: Set<pid_t> = []
+
+    // Screensaver
+    private var idleTimer: Timer?
+    private var eventMonitor: Any?
 
     private let bounceModeKey = "AttentionApp.BounceMode"
     private let loopModeKey = "AttentionApp.LoopMode"
+    private let screensaverModeKey = "AttentionApp.ScreensaverMode"
+    private let videoCountKey = "AttentionApp.VideoCount"
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Load saved preferences
         isBounceMode = UserDefaults.standard.bool(forKey: bounceModeKey)
         isLoopMode = UserDefaults.standard.bool(forKey: loopModeKey)
+        isScreensaverMode = UserDefaults.standard.bool(forKey: screensaverModeKey)
+        videoCount = max(1, UserDefaults.standard.integer(forKey: videoCountKey))
+        if videoCount == 0 { videoCount = 1 }
 
         setupStatusBar()
         setupProcessMonitor()
+
+        if isScreensaverMode {
+            startIdleMonitoring()
+        }
     }
 
     private func setupStatusBar() {
@@ -44,6 +61,22 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let loopItem = NSMenuItem(title: "Loop Current Video", action: #selector(toggleLoopMode), keyEquivalent: "")
         loopItem.state = isLoopMode ? .on : .off
         menu.addItem(loopItem)
+
+        let screensaverItem = NSMenuItem(title: "Screensaver Mode", action: #selector(toggleScreensaverMode), keyEquivalent: "")
+        screensaverItem.state = isScreensaverMode ? .on : .off
+        menu.addItem(screensaverItem)
+
+        // Video Count Submenu
+        let videoCountItem = NSMenuItem(title: "Video Count", action: nil, keyEquivalent: "")
+        let videoCountMenu = NSMenu()
+        for count in 1...4 {
+            let item = NSMenuItem(title: "\(count)", action: #selector(setVideoCount(_:)), keyEquivalent: "")
+            item.tag = count
+            item.state = videoCount == count ? .on : .off
+            videoCountMenu.addItem(item)
+        }
+        videoCountItem.submenu = videoCountMenu
+        menu.addItem(videoCountItem)
 
         menu.addItem(NSMenuItem.separator())
 
@@ -86,6 +119,104 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         processMonitor.startMonitoring()
     }
 
+    // MARK: - Idle/Screensaver Monitoring
+
+    private func startIdleMonitoring() {
+        stopIdleMonitoring()
+
+        // Check idle time every second
+        idleTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
+            self?.checkIdleTime()
+        }
+
+        // Monitor for activity to dismiss screensaver
+        eventMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.mouseMoved, .keyDown, .leftMouseDown, .rightMouseDown, .scrollWheel]) { [weak self] _ in
+            self?.handleUserActivity()
+        }
+    }
+
+    private func stopIdleMonitoring() {
+        idleTimer?.invalidate()
+        idleTimer = nil
+
+        if let monitor = eventMonitor {
+            NSEvent.removeMonitor(monitor)
+            eventMonitor = nil
+        }
+    }
+
+    private func checkIdleTime() {
+        let idleSeconds = getSystemIdleTime()
+        let timeout = SettingsWindow.getScreensaverTimeout()
+
+        if idleSeconds >= timeout && !isScreensaverActive {
+            activateScreensaver()
+        }
+    }
+
+    private func getSystemIdleTime() -> Double {
+        var iterator: io_iterator_t = 0
+        defer { IOObjectRelease(iterator) }
+
+        guard IOServiceGetMatchingServices(kIOMainPortDefault, IOServiceMatching("IOHIDSystem"), &iterator) == KERN_SUCCESS else {
+            return 0
+        }
+
+        let entry = IOIteratorNext(iterator)
+        defer { IOObjectRelease(entry) }
+
+        guard entry != 0 else { return 0 }
+
+        var unmanagedDict: Unmanaged<CFMutableDictionary>?
+        guard IORegistryEntryCreateCFProperties(entry, &unmanagedDict, kCFAllocatorDefault, 0) == KERN_SUCCESS,
+              let dict = unmanagedDict?.takeRetainedValue() as? [String: Any],
+              let idleTime = dict["HIDIdleTime"] as? Int64 else {
+            return 0
+        }
+
+        // HIDIdleTime is in nanoseconds
+        return Double(idleTime) / 1_000_000_000.0
+    }
+
+    private func activateScreensaver() {
+        guard !isScreensaverActive else { return }
+        isScreensaverActive = true
+
+        // Show video with DVD bounce mode
+        let targetCount = SettingsWindow.getVideoCount()
+        videoWindows.removeAll()
+        for i in 0..<targetCount {
+            let window = VideoPlayerWindow(randomStart: i > 0 || targetCount > 1)
+            window.setBounceMode(true)
+            window.setLoopMode(true)
+            window.showAndPlay()
+            videoWindows.append(window)
+        }
+    }
+
+    private func handleUserActivity() {
+        guard isScreensaverActive else { return }
+        deactivateScreensaver()
+    }
+
+    private func deactivateScreensaver() {
+        guard isScreensaverActive else { return }
+        isScreensaverActive = false
+
+        // Only hide if no other reason to show
+        if activeProcesses.isEmpty && !isTestMode {
+            hideVideoPlayer()
+        } else {
+            // Restore normal settings
+            videoWindows.forEach {
+                $0.setBounceMode(isBounceMode)
+                $0.setLoopMode(isLoopMode)
+            }
+        }
+    }
+
+    // MARK: - Menu Actions
+
     @objc private func toggleEnabled(_ sender: NSMenuItem) {
         isEnabled.toggle()
         sender.state = isEnabled ? .on : .off
@@ -102,7 +233,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func toggleBounceMode(_ sender: NSMenuItem) {
         isBounceMode.toggle()
         sender.state = isBounceMode ? .on : .off
-        videoWindow?.setBounceMode(isBounceMode)
+        videoWindows.forEach { $0.setBounceMode(isBounceMode) }
 
         // Save preference
         UserDefaults.standard.set(isBounceMode, forKey: bounceModeKey)
@@ -111,10 +242,45 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func toggleLoopMode(_ sender: NSMenuItem) {
         isLoopMode.toggle()
         sender.state = isLoopMode ? .on : .off
-        videoWindow?.setLoopMode(isLoopMode)
+        videoWindows.forEach { $0.setLoopMode(isLoopMode) }
 
         // Save preference
         UserDefaults.standard.set(isLoopMode, forKey: loopModeKey)
+    }
+
+    @objc private func toggleScreensaverMode(_ sender: NSMenuItem) {
+        isScreensaverMode.toggle()
+        sender.state = isScreensaverMode ? .on : .off
+
+        if isScreensaverMode {
+            startIdleMonitoring()
+        } else {
+            stopIdleMonitoring()
+            if isScreensaverActive {
+                deactivateScreensaver()
+            }
+        }
+
+        // Save preference
+        UserDefaults.standard.set(isScreensaverMode, forKey: screensaverModeKey)
+    }
+
+    @objc private func setVideoCount(_ sender: NSMenuItem) {
+        videoCount = sender.tag
+        UserDefaults.standard.set(videoCount, forKey: videoCountKey)
+
+        // Update menu checkmarks
+        if let menu = sender.menu {
+            for item in menu.items {
+                item.state = item.tag == videoCount ? .on : .off
+            }
+        }
+
+        // If currently showing, recreate windows with new count
+        if !videoWindows.isEmpty && videoWindows.first?.isVisible == true {
+            hideVideoPlayer()
+            showVideoPlayer()
+        }
     }
 
     @objc private func toggleTestVideo(_ sender: NSMenuItem) {
@@ -126,7 +292,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         } else {
             // Clean up any stale PIDs before checking
             cleanupStaleProcesses()
-            if activeProcesses.isEmpty {
+            if activeProcesses.isEmpty && !isScreensaverActive {
                 hideVideoPlayer()
             }
         }
@@ -161,11 +327,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func previousVideo() {
-        videoWindow?.skipToPrevious()
+        videoWindows.forEach { $0.skipToPrevious() }
     }
 
     @objc private func nextVideo() {
-        videoWindow?.skipToNext()
+        videoWindows.forEach { $0.skipToNext() }
     }
 
     @objc private func openSettings() {
@@ -173,7 +339,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             settingsWindow = SettingsWindow()
             settingsWindow?.onSettingsChanged = { [weak self] in
                 // Reload media if settings changed
-                self?.videoWindow?.reloadMedia()
+                self?.videoWindows.forEach { $0.reloadMedia() }
             }
         }
         settingsWindow?.makeKeyAndOrderFront(nil)
@@ -207,34 +373,50 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private func handleCommandFinished(pid: pid_t) {
         activeProcesses.remove(pid)
 
-        // Only hide if no more active processes and test mode is off
-        if activeProcesses.isEmpty && !isTestMode {
+        // Only hide if no more active processes and test mode is off and screensaver not active
+        if activeProcesses.isEmpty && !isTestMode && !isScreensaverActive {
             hideVideoPlayer()
         }
     }
 
     private func showVideoPlayer() {
-        if videoWindow == nil {
-            videoWindow = VideoPlayerWindow()
-            videoWindow?.setBounceMode(isBounceMode)
-            videoWindow?.setLoopMode(isLoopMode)
-            videoWindow?.showAndPlay()
-        } else if !videoWindow!.isVisible {
-            // Window exists but hidden - resume or start fresh
-            videoWindow?.setBounceMode(isBounceMode)
-            videoWindow?.setLoopMode(isLoopMode)
-            videoWindow?.showAndPlay()
+        let targetCount = SettingsWindow.getVideoCount()
+
+        if videoWindows.isEmpty {
+            // Create new windows
+            for i in 0..<targetCount {
+                let window = VideoPlayerWindow(randomStart: i > 0 || targetCount > 1)
+                window.setBounceMode(isBounceMode)
+                window.setLoopMode(isLoopMode)
+                window.showAndPlay()
+                videoWindows.append(window)
+            }
+        } else if !videoWindows.first!.isVisible {
+            // Windows exist but hidden - recreate with current count
+            videoWindows.removeAll()
+            for i in 0..<targetCount {
+                let window = VideoPlayerWindow(randomStart: i > 0 || targetCount > 1)
+                window.setBounceMode(isBounceMode)
+                window.setLoopMode(isLoopMode)
+                window.showAndPlay()
+                videoWindows.append(window)
+            }
         } else {
-            // Already visible - just ensure settings are current and make sure it's shown
-            videoWindow?.setBounceMode(isBounceMode)
-            videoWindow?.setLoopMode(isLoopMode)
-            videoWindow?.orderFrontRegardless()
+            // Already visible - just ensure settings are current
+            videoWindows.forEach {
+                $0.setBounceMode(isBounceMode)
+                $0.setLoopMode(isLoopMode)
+                $0.orderFrontRegardless()
+            }
         }
     }
 
     private func hideVideoPlayer() {
-        videoWindow?.stopPlayback()
-        videoWindow?.orderOut(nil)
+        videoWindows.forEach {
+            $0.stopPlayback()
+            $0.orderOut(nil)
+        }
+        videoWindows.removeAll()
     }
 
     private func createMediaControls() -> NSView {

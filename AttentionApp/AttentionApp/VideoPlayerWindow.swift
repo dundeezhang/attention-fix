@@ -31,15 +31,41 @@ class VideoPlayerWindow: NSPanel {
     private var velocityY: CGFloat = 3.0
     private let bounceSpeed: CGFloat = 4.5
 
-    init() {
+    // Random start option
+    private var randomStart: Bool = false
+
+    convenience init() {
+        self.init(randomStart: false)
+    }
+
+    init(randomStart: Bool) {
+        self.randomStart = randomStart
+
         // Start with a default size, will resize when media loads
         let screenRect = NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: 800, height: 600)
-        let windowRect = NSRect(
-            x: screenRect.midX - 200,
-            y: screenRect.midY - 150,
-            width: 400,
-            height: 300
-        )
+
+        let windowRect: NSRect
+        if randomStart {
+            // Random position within screen bounds
+            let maxX = screenRect.maxX - 400
+            let maxY = screenRect.maxY - 300
+            let randomX = CGFloat.random(in: screenRect.minX...max(screenRect.minX, maxX))
+            let randomY = CGFloat.random(in: screenRect.minY...max(screenRect.minY, maxY))
+            windowRect = NSRect(x: randomX, y: randomY, width: 400, height: 300)
+        } else {
+            windowRect = NSRect(
+                x: screenRect.midX - 200,
+                y: screenRect.midY - 150,
+                width: 400,
+                height: 300
+            )
+        }
+
+        // Random velocity direction
+        if randomStart {
+            velocityX = CGFloat.random(in: 3.0...6.0) * (Bool.random() ? 1 : -1)
+            velocityY = CGFloat.random(in: 2.0...5.0) * (Bool.random() ? 1 : -1)
+        }
 
         super.init(
             contentRect: windowRect,
