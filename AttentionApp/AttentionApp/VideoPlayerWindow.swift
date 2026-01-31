@@ -305,9 +305,9 @@ class VideoPlayerWindow: NSPanel {
             finalHeight *= scale
         }
 
-        // Cap at screen size with margin
-        let maxWidth = screenRect.width - 40
-        let maxHeight = screenRect.height - 40
+        // Cap at max size (smaller window)
+        let maxWidth: CGFloat = 480
+        let maxHeight: CGFloat = 360
 
         if finalWidth > maxWidth || finalHeight > maxHeight {
             let widthRatio = maxWidth / finalWidth
