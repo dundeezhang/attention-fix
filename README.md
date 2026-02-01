@@ -1,6 +1,6 @@
 # AttentionApp
 
-A macOS menu bar app that plays videos and images while you wait for builds, installs, and terminal commands to finish.
+A macOS menu bar app that plays videos and images while you wait for builds, installs, and terminal commands to finish. Just for fun.
 
 ## Installation
 
