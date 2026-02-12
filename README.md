@@ -7,7 +7,7 @@ A macOS menu bar app that plays videos and images while you wait for builds, ins
 ### Download
 Download the latest release from [Releases](https://github.com/dundeezhang/attention-fix/releases) and drag to Applications.
 
-### Homebrew
+### Homebrew - currently broken
 ```bash
 brew tap dundeezhang/tap
 brew install --cask attentionapp
